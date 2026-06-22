@@ -1,9 +1,9 @@
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const Stripe = require("stripe");
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 const jwt = require("jsonwebtoken");
-require("dotenv").config();
 const { client, connectDB } = require("./config/db");
 
 const app = express();
@@ -426,6 +426,40 @@ app.get("/payments/:email", async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: "failed to fetch payments" });
+  }
+});
+
+// GET /creator/stats/:email
+app.get("/creator/stats/:email", async (req, res) => {
+  try {
+    const { email } = req.params;
+    const prompts = await promptsCollection
+      .find({ creatorEmail: email })
+      .toArray();
+
+    const totalPrompts = prompts.length;
+    const approvedPrompts = prompts.filter(
+      (p) => p.status === "approved"
+    ).length;
+    const totalCopies = prompts.reduce(
+      (sum, p) => sum + (p.copyCount || 0), 0
+    );
+
+    const reviews = await reviewsCollection
+      .find({
+        promptId: { $in: prompts.map((p) => p._id.toString()) },
+      })
+      .toArray();
+
+    const avgRating =
+      reviews.length > 0
+        ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+        : 0;
+
+    res.send({ totalPrompts, approvedPrompts, totalCopies, avgRating });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "Failed to fetch creator stats" });
   }
 });
 
