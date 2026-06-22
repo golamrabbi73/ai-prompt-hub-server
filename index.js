@@ -12,7 +12,6 @@ app.use(express.json());
 
 connectDB();
 
-// Collections
 const usersCollection = client.db("promptariumDB").collection("users");
 const promptsCollection = client.db("promptariumDB").collection("prompts");
 const reviewsCollection = client.db("promptariumDB").collection("reviews");
@@ -28,9 +27,7 @@ app.get("/", (req, res) => {
 // JWT
 app.post("/jwt", (req, res) => {
   const userInfo = req.body;
-  const token = jwt.sign(userInfo, process.env.JWT_SECRET, {
-    expiresIn: "7d",
-  });
+  const token = jwt.sign(userInfo, process.env.JWT_SECRET, { expiresIn: "7d" });
   res.send({ token });
 });
 
@@ -39,15 +36,8 @@ app.post("/users", async (req, res) => {
   try {
     const user = req.body;
     const existingUser = await usersCollection.findOne({ email: user.email });
-    if (existingUser) {
-      return res.send({ message: "user already exists", insertedId: null });
-    }
-    const newUser = {
-      ...user,
-      role: "User",
-      subscription: "free",
-      createdAt: new Date(),
-    };
+    if (existingUser) return res.send({ message: "user already exists", insertedId: null });
+    const newUser = { ...user, role: "User", subscription: "free", createdAt: new Date() };
     const result = await usersCollection.insertOne(newUser);
     res.send(result);
   } catch (error) {
@@ -56,18 +46,30 @@ app.post("/users", async (req, res) => {
   }
 });
 
-// Prompts
+// GET /users/top-creators — specific route before any /:param
+app.get("/users/top-creators", async (req, res) => {
+  try {
+    const creators = await promptsCollection.aggregate([
+      { $match: { status: "approved" } },
+      { $group: { _id: "$creatorEmail", totalPrompts: { $sum: 1 }, totalCopies: { $sum: "$copyCount" } } },
+      { $sort: { totalPrompts: -1 } },
+      { $limit: 6 },
+      { $lookup: { from: "users", localField: "_id", foreignField: "email", as: "userInfo" } },
+      { $unwind: "$userInfo" },
+      { $project: { email: "$_id", totalPrompts: 1, totalCopies: 1, name: "$userInfo.name", photoURL: "$userInfo.photoURL", role: "$userInfo.role" } },
+    ]).toArray();
+    res.send(creators);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to fetch top creators" });
+  }
+});
 
-// POST /prompts route — add a new prompt
+// Prompts
 app.post("/prompts", async (req, res) => {
   try {
     const prompt = req.body;
-    const newPrompt = {
-      ...prompt,
-      copyCount: 0,
-      status: "pending",
-      createdAt: new Date(),
-    };
+    const newPrompt = { ...prompt, copyCount: 0, status: "pending", createdAt: new Date() };
     const result = await promptsCollection.insertOne(newPrompt);
     res.send(result);
   } catch (error) {
@@ -76,26 +78,10 @@ app.post("/prompts", async (req, res) => {
   }
 });
 
-// GET /prompts — search + filter + sort + pagination (server-side)
 app.get("/prompts", async (req, res) => {
   try {
-    const {
-      search = "",
-      category = "",
-      aiTool = "",
-      difficulty = "",
-      sort = "latest",
-      page = 1,
-      limit = 9,
-    } = req.query;
-
-    // Build filter query
-    const query = {
-      status: "approved",
-      visibility: "public",
-    };
-
-    // Search by title, tags, or aiTool
+    const { search = "", category = "", aiTool = "", difficulty = "", sort = "latest", page = 1, limit = 9 } = req.query;
+    const query = { status: "approved", visibility: "public" };
     if (search) {
       query.$or = [
         { title: { $regex: search, $options: "i" } },
@@ -103,52 +89,45 @@ app.get("/prompts", async (req, res) => {
         { aiTool: { $regex: search, $options: "i" } },
       ];
     }
-
     if (category) query.category = category;
     if (aiTool) query.aiTool = aiTool;
     if (difficulty) query.difficulty = difficulty;
-
-    // Sort
     let sortOption = {};
     if (sort === "latest") sortOption = { createdAt: -1 };
     if (sort === "mostCopied") sortOption = { copyCount: -1 };
     if (sort === "mostPopular") sortOption = { averageRating: -1 };
-
-    // Pagination
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
-
     const total = await promptsCollection.countDocuments(query);
-    const prompts = await promptsCollection
-      .find(query)
-      .sort(sortOption)
-      .skip(skip)
-      .limit(limitNum)
-      .toArray();
-
-    res.send({
-      prompts,
-      total,
-      page: pageNum,
-      totalPages: Math.ceil(total / limitNum),
-    });
+    const prompts = await promptsCollection.find(query).sort(sortOption).skip(skip).limit(limitNum).toArray();
+    res.send({ prompts, total, page: pageNum, totalPages: Math.ceil(total / limitNum) });
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: "failed to fetch prompts" });
   }
 });
 
-// GET /prompts/:id — fetch a single prompt by id
+// /prompts/:id/copy BEFORE /prompts/:id
+app.patch("/prompts/:id/copy", async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const result = await promptsCollection.updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $inc: { copyCount: 1 } }
+    );
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to update copy count" });
+  }
+});
+
 app.get("/prompts/:id", async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
-    const id = req.params.id;
-    const query = { _id: new ObjectId(id) };
-    const prompt = await promptsCollection.findOne(query);
-    if (!prompt) {
-      return res.status(404).send({ message: "prompt not found" });
-    }
+    const prompt = await promptsCollection.findOne({ _id: new ObjectId(req.params.id) });
+    if (!prompt) return res.status(404).send({ message: "prompt not found" });
     res.send(prompt);
   } catch (error) {
     console.error(error);
@@ -156,20 +135,13 @@ app.get("/prompts/:id", async (req, res) => {
   }
 });
 
-// PUT /prompts/:id — update a prompt
 app.put("/prompts/:id", async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
-    const id = req.params.id;
-    const updatedData = req.body;
-    const query = { _id: new ObjectId(id) };
-    const updateDoc = {
-      $set: {
-        ...updatedData,
-        updatedAt: new Date(),
-      },
-    };
-    const result = await promptsCollection.updateOne(query, updateDoc);
+    const result = await promptsCollection.updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { ...req.body, updatedAt: new Date() } }
+    );
     res.send(result);
   } catch (error) {
     console.error(error);
@@ -177,13 +149,10 @@ app.put("/prompts/:id", async (req, res) => {
   }
 });
 
-// DELETE /prompts/:id — delete a prompt
 app.delete("/prompts/:id", async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
-    const id = req.params.id;
-    const query = { _id: new ObjectId(id) };
-    const result = await promptsCollection.deleteOne(query);
+    const result = await promptsCollection.deleteOne({ _id: new ObjectId(req.params.id) });
     res.send(result);
   } catch (error) {
     console.error(error);
@@ -191,15 +160,10 @@ app.delete("/prompts/:id", async (req, res) => {
   }
 });
 
-// POST /reviews — add a review
+// Reviews
 app.post("/reviews", async (req, res) => {
   try {
-    const review = req.body;
-    const newReview = {
-      ...review,
-      createdAt: new Date(),
-    };
-    const result = await reviewsCollection.insertOne(newReview);
+    const result = await reviewsCollection.insertOne({ ...req.body, createdAt: new Date() });
     res.send(result);
   } catch (error) {
     console.error(error);
@@ -207,27 +171,22 @@ app.post("/reviews", async (req, res) => {
   }
 });
 
-// GET /reviews/:promptId — get all reviews for a prompt
-app.get("/reviews/:promptId", async (req, res) => {
+// /reviews/latest BEFORE /reviews/:promptId
+app.get("/reviews/latest", async (req, res) => {
   try {
-    const promptId = req.params.promptId;
-    const reviews = await reviewsCollection
-      .find({ promptId })
-      .sort({ createdAt: -1 })
-      .toArray();
+    const reviews = await reviewsCollection.find().sort({ createdAt: -1 }).limit(6).toArray();
     res.send(reviews);
   } catch (error) {
     console.error(error);
-    res.status(500).send({ message: "failed to fetch reviews" });
+    res.status(500).send({ message: "failed to fetch latest reviews" });
   }
 });
 
-// GET /reviews/user/:email — get all reviews by a user
+// /reviews/user/:email BEFORE /reviews/:promptId
 app.get("/reviews/user/:email", async (req, res) => {
   try {
-    const email = req.params.email;
     const reviews = await reviewsCollection
-      .find({ reviewerEmail: email })
+      .find({ reviewerEmail: req.params.email })
       .sort({ createdAt: -1 })
       .toArray();
     res.send(reviews);
@@ -237,14 +196,23 @@ app.get("/reviews/user/:email", async (req, res) => {
   }
 });
 
-// DELETE /reviews/:id — delete a review
+app.get("/reviews/:promptId", async (req, res) => {
+  try {
+    const reviews = await reviewsCollection
+      .find({ promptId: req.params.promptId })
+      .sort({ createdAt: -1 })
+      .toArray();
+    res.send(reviews);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to fetch reviews" });
+  }
+});
+
 app.delete("/reviews/:id", async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
-    const id = req.params.id;
-    const result = await reviewsCollection.deleteOne({
-      _id: new ObjectId(id),
-    });
+    const result = await reviewsCollection.deleteOne({ _id: new ObjectId(req.params.id) });
     res.send(result);
   } catch (error) {
     console.error(error);
@@ -252,26 +220,16 @@ app.delete("/reviews/:id", async (req, res) => {
   }
 });
 
-// POST /bookmarks — toggle bookmark (add if not exists, remove if exists)
+// Bookmarks
 app.post("/bookmarks", async (req, res) => {
   try {
     const { userEmail, promptId } = req.body;
-
-    const existing = await bookmarksCollection.findOne({
-      userEmail,
-      promptId,
-    });
-
+    const existing = await bookmarksCollection.findOne({ userEmail, promptId });
     if (existing) {
       await bookmarksCollection.deleteOne({ userEmail, promptId });
       return res.send({ message: "bookmark removed", bookmarked: false });
     }
-
-    const result = await bookmarksCollection.insertOne({
-      userEmail,
-      promptId,
-      createdAt: new Date(),
-    });
+    const result = await bookmarksCollection.insertOne({ userEmail, promptId, createdAt: new Date() });
     res.send({ message: "bookmark added", bookmarked: true, result });
   } catch (error) {
     console.error(error);
@@ -279,12 +237,22 @@ app.post("/bookmarks", async (req, res) => {
   }
 });
 
-// GET /bookmarks/:email — get all bookmarks for a user
+// /bookmarks/check/:email/:promptId BEFORE /bookmarks/:email
+app.get("/bookmarks/check/:email/:promptId", async (req, res) => {
+  try {
+    const { email, promptId } = req.params;
+    const existing = await bookmarksCollection.findOne({ userEmail: email, promptId });
+    res.send({ bookmarked: !!existing });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to check bookmark" });
+  }
+});
+
 app.get("/bookmarks/:email", async (req, res) => {
   try {
-    const email = req.params.email;
     const bookmarks = await bookmarksCollection
-      .find({ userEmail: email })
+      .find({ userEmail: req.params.email })
       .sort({ createdAt: -1 })
       .toArray();
     res.send(bookmarks);
@@ -294,31 +262,10 @@ app.get("/bookmarks/:email", async (req, res) => {
   }
 });
 
-// GET /bookmarks/check/:email/:promptId — check if a prompt is bookmarked
-app.get("/bookmarks/check/:email/:promptId", async (req, res) => {
-  try {
-    const { email, promptId } = req.params;
-    const existing = await bookmarksCollection.findOne({
-      userEmail: email,
-      promptId,
-    });
-    res.send({ bookmarked: !!existing });
-  } catch (error) {
-    console.error(error);
-    res.status(500).send({ message: "failed to check bookmark" });
-  }
-});
-
-// POST /reports — report a prompt
+// Reports
 app.post("/reports", async (req, res) => {
   try {
-    const report = req.body;
-    const newReport = {
-      ...report,
-      status: "pending",
-      createdAt: new Date(),
-    };
-    const result = await reportsCollection.insertOne(newReport);
+    const result = await reportsCollection.insertOne({ ...req.body, status: "pending", createdAt: new Date() });
     res.send(result);
   } catch (error) {
     console.error(error);
@@ -326,13 +273,9 @@ app.post("/reports", async (req, res) => {
   }
 });
 
-// GET /reports — get all reports (admin only, protected later)
 app.get("/reports", async (req, res) => {
   try {
-    const reports = await reportsCollection
-      .find()
-      .sort({ createdAt: -1 })
-      .toArray();
+    const reports = await reportsCollection.find().sort({ createdAt: -1 }).toArray();
     res.send(reports);
   } catch (error) {
     console.error(error);
@@ -340,15 +283,12 @@ app.get("/reports", async (req, res) => {
   }
 });
 
-// PATCH /reports/:id — update report status (dismiss/warn)
 app.patch("/reports/:id", async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
-    const id = req.params.id;
-    const { status } = req.body;
     const result = await reportsCollection.updateOne(
-      { _id: new ObjectId(id) },
-      { $set: { status, updatedAt: new Date() } }
+      { _id: new ObjectId(req.params.id) },
+      { $set: { status: req.body.status, updatedAt: new Date() } }
     );
     res.send(result);
   } catch (error) {
@@ -357,22 +297,11 @@ app.patch("/reports/:id", async (req, res) => {
   }
 });
 
-// POST /payments — save payment record after successful Stripe payment
+// Payments
 app.post("/payments", async (req, res) => {
   try {
-    const payment = req.body;
-    const newPayment = {
-      ...payment,
-      createdAt: new Date(),
-    };
-    const result = await paymentsCollection.insertOne(newPayment);
-
-    // Update user subscription to premium
-    await usersCollection.updateOne(
-      { email: payment.email },
-      { $set: { subscription: "premium" } }
-    );
-
+    const result = await paymentsCollection.insertOne({ ...req.body, createdAt: new Date() });
+    await usersCollection.updateOne({ email: req.body.email }, { $set: { subscription: "premium" } });
     res.send(result);
   } catch (error) {
     console.error(error);
@@ -380,13 +309,9 @@ app.post("/payments", async (req, res) => {
   }
 });
 
-// GET /payments — get all payments (admin only, protected later)
 app.get("/payments", async (req, res) => {
   try {
-    const payments = await paymentsCollection
-      .find()
-      .sort({ createdAt: -1 })
-      .toArray();
+    const payments = await paymentsCollection.find().sort({ createdAt: -1 }).toArray();
     res.send(payments);
   } catch (error) {
     console.error(error);
@@ -394,12 +319,10 @@ app.get("/payments", async (req, res) => {
   }
 });
 
-// GET /payments/:email — get payments by user email
 app.get("/payments/:email", async (req, res) => {
   try {
-    const email = req.params.email;
     const payments = await paymentsCollection
-      .find({ email })
+      .find({ email: req.params.email })
       .sort({ createdAt: -1 })
       .toArray();
     res.send(payments);
@@ -409,98 +332,19 @@ app.get("/payments/:email", async (req, res) => {
   }
 });
 
-// GET /users/top-creators — top 6 creators by prompt count
-app.get("/users/top-creators", async (req, res) => {
-  try {
-    const creators = await promptsCollection
-      .aggregate([
-        { $match: { status: "approved" } },
-        { $group: { _id: "$creatorEmail", totalPrompts: { $sum: 1 }, totalCopies: { $sum: "$copyCount" } } },
-        { $sort: { totalPrompts: -1 } },
-        { $limit: 6 },
-        {
-          $lookup: {
-            from: "users",
-            localField: "_id",
-            foreignField: "email",
-            as: "userInfo",
-          },
-        },
-        { $unwind: "$userInfo" },
-        {
-          $project: {
-            email: "$_id",
-            totalPrompts: 1,
-            totalCopies: 1,
-            name: "$userInfo.name",
-            photoURL: "$userInfo.photoURL",
-            role: "$userInfo.role",
-          },
-        },
-      ])
-      .toArray();
-    res.send(creators);
-  } catch (error) {
-    console.error(error);
-    res.status(500).send({ message: "failed to fetch top creators" });
-  }
-});
-
-// GET /reviews/latest — latest 6 reviews for home page
-app.get("/reviews/latest", async (req, res) => {
-  try {
-    const reviews = await reviewsCollection
-      .find()
-      .sort({ createdAt: -1 })
-      .limit(6)
-      .toArray();
-    res.send(reviews);
-  } catch (error) {
-    console.error(error);
-    res.status(500).send({ message: "failed to fetch latest reviews" });
-  }
-});
-
-// GET /analytics/stats — platform-wide summary stats
+// Analytics
 app.get("/analytics/stats", async (req, res) => {
   try {
-    const [totalPrompts, totalUsers, totalReviews, copiesResult] =
-      await Promise.all([
-        promptsCollection.countDocuments({ status: "approved" }),
-        usersCollection.countDocuments(),
-        reviewsCollection.countDocuments(),
-        promptsCollection
-          .aggregate([
-            { $group: { _id: null, total: { $sum: "$copyCount" } } },
-          ])
-          .toArray(),
-      ]);
-
-    res.send({
-      totalPrompts,
-      totalUsers,
-      totalReviews,
-      totalCopies: copiesResult[0]?.total || 0,
-    });
+    const [totalPrompts, totalUsers, totalReviews, copiesResult] = await Promise.all([
+      promptsCollection.countDocuments({ status: "approved" }),
+      usersCollection.countDocuments(),
+      reviewsCollection.countDocuments(),
+      promptsCollection.aggregate([{ $group: { _id: null, total: { $sum: "$copyCount" } } }]).toArray(),
+    ]);
+    res.send({ totalPrompts, totalUsers, totalReviews, totalCopies: copiesResult[0]?.total || 0 });
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: "failed to fetch stats" });
-  }
-});
-
-// PATCH /prompts/:id/copy — increment copy count
-app.patch("/prompts/:id/copy", async (req, res) => {
-  try {
-    const { ObjectId } = require("mongodb");
-    const id = req.params.id;
-    const result = await promptsCollection.updateOne(
-      { _id: new ObjectId(id) },
-      { $inc: { copyCount: 1 } }
-    );
-    res.send(result);
-  } catch (error) {
-    console.error(error);
-    res.status(500).send({ message: "failed to update copy count" });
   }
 });
 
