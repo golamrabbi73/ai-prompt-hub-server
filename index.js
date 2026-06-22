@@ -174,6 +174,20 @@ app.patch("/prompts/:id/copy", async (req, res) => {
   }
 });
 
+// GET /prompts/admin/all — all prompts regardless of status (admin only)
+app.get("/prompts/admin/all", async (req, res) => {
+  try {
+    const prompts = await promptsCollection
+      .find()
+      .sort({ createdAt: -1 })
+      .toArray();
+    res.send(prompts);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to fetch all prompts" });
+  }
+});
+
 // GET /prompts/user/:email — all prompts by a specific creator (any status)
 app.get("/prompts/user/:email", async (req, res) => {
   try {
