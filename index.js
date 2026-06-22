@@ -15,6 +15,7 @@ connectDB();
 // Collections
 const usersCollection = client.db("promptariumDB").collection("users");
 const promptsCollection = client.db("promptariumDB").collection("prompts");
+const reviewsCollection = client.db("promptariumDB").collection("reviews");
 
 // Health check
 app.get("/", (req, res) => {
@@ -184,6 +185,67 @@ app.delete("/prompts/:id", async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: "failed to delete prompt" });
+  }
+});
+
+// POST /reviews — add a review
+app.post("/reviews", async (req, res) => {
+  try {
+    const review = req.body;
+    const newReview = {
+      ...review,
+      createdAt: new Date(),
+    };
+    const result = await reviewsCollection.insertOne(newReview);
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to add review" });
+  }
+});
+
+// GET /reviews/:promptId — get all reviews for a prompt
+app.get("/reviews/:promptId", async (req, res) => {
+  try {
+    const promptId = req.params.promptId;
+    const reviews = await reviewsCollection
+      .find({ promptId })
+      .sort({ createdAt: -1 })
+      .toArray();
+    res.send(reviews);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to fetch reviews" });
+  }
+});
+
+// GET /reviews/user/:email — get all reviews by a user
+app.get("/reviews/user/:email", async (req, res) => {
+  try {
+    const email = req.params.email;
+    const reviews = await reviewsCollection
+      .find({ reviewerEmail: email })
+      .sort({ createdAt: -1 })
+      .toArray();
+    res.send(reviews);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to fetch user reviews" });
+  }
+});
+
+// DELETE /reviews/:id — delete a review
+app.delete("/reviews/:id", async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const id = req.params.id;
+    const result = await reviewsCollection.deleteOne({
+      _id: new ObjectId(id),
+    });
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to delete review" });
   }
 });
 
