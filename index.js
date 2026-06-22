@@ -263,6 +263,37 @@ app.get("/bookmarks/check/:email/:promptId", async (req, res) => {
   }
 });
 
+// GET /bookmarks/full/:email — bookmarked prompts with full prompt details
+app.get("/bookmarks/full/:email", async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const bookmarks = await bookmarksCollection
+      .find({ userEmail: req.params.email })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    if (bookmarks.length === 0) return res.send([]);
+
+    const promptIds = bookmarks.map((b) => new ObjectId(b.promptId));
+    const prompts = await promptsCollection
+      .find({ _id: { $in: promptIds } })
+      .toArray();
+
+    // attach bookmarkedAt to each prompt, preserving bookmark order
+    const result = bookmarks
+      .map((b) => {
+        const prompt = prompts.find((p) => p._id.toString() === b.promptId);
+        return prompt ? { ...prompt, bookmarkedAt: b.createdAt } : null;
+      })
+      .filter(Boolean);
+
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to fetch saved prompts" });
+  }
+});
+
 app.get("/bookmarks/:email", async (req, res) => {
   try {
     const bookmarks = await bookmarksCollection
