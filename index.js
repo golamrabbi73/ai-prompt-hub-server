@@ -488,6 +488,22 @@ app.get("/analytics/stats", async (req, res) => {
   }
 });
 
+// PATCH /prompts/:id/copy — increment copy count
+app.patch("/prompts/:id/copy", async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const id = req.params.id;
+    const result = await promptsCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $inc: { copyCount: 1 } }
+    );
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to update copy count" });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
