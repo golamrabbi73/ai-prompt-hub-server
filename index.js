@@ -1,5 +1,7 @@
 const express = require("express");
 const cors = require("cors");
+const Stripe = require("stripe");
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
 const { client, connectDB } = require("./config/db");
@@ -370,6 +372,25 @@ app.patch("/reports/:id", async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: "failed to update report" });
+  }
+});
+
+// POST /create-payment-intent
+app.post("/create-payment-intent", async (req, res) => {
+  try {
+    const { price } = req.body;
+    const amount = Math.round(price * 100); // dollars to cents
+
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount,
+      currency: "usd",
+      payment_method_types: ["card"],
+    });
+
+    res.send({ clientSecret: paymentIntent.client_secret });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "Payment intent creation failed" });
   }
 });
 
