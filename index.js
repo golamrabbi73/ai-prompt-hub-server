@@ -135,6 +135,23 @@ app.get("/prompts", async (req, res) => {
   }
 });
 
+// GET /prompts/:id — fetch a single prompt by id
+app.get("/prompts/:id", async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const id = req.params.id;
+    const query = { _id: new ObjectId(id) };
+    const prompt = await promptsCollection.findOne(query);
+    if (!prompt) {
+      return res.status(404).send({ message: "prompt not found" });
+    }
+    res.send(prompt);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to fetch prompt" });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
