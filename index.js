@@ -123,6 +123,20 @@ app.patch("/prompts/:id/copy", async (req, res) => {
   }
 });
 
+// GET /prompts/user/:email — all prompts by a specific creator (any status)
+app.get("/prompts/user/:email", async (req, res) => {
+  try {
+    const prompts = await promptsCollection
+      .find({ creatorEmail: req.params.email })
+      .sort({ createdAt: -1 })
+      .toArray();
+    res.send(prompts);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to fetch user prompts" });
+  }
+});
+
 app.get("/prompts/:id", async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
