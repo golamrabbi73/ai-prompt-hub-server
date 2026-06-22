@@ -16,6 +16,7 @@ connectDB();
 const usersCollection = client.db("promptariumDB").collection("users");
 const promptsCollection = client.db("promptariumDB").collection("prompts");
 const reviewsCollection = client.db("promptariumDB").collection("reviews");
+const bookmarksCollection = client.db("promptariumDB").collection("bookmarks");
 
 // Health check
 app.get("/", (req, res) => {
@@ -246,6 +247,63 @@ app.delete("/reviews/:id", async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: "failed to delete review" });
+  }
+});
+
+// POST /bookmarks — toggle bookmark (add if not exists, remove if exists)
+app.post("/bookmarks", async (req, res) => {
+  try {
+    const { userEmail, promptId } = req.body;
+
+    const existing = await bookmarksCollection.findOne({
+      userEmail,
+      promptId,
+    });
+
+    if (existing) {
+      await bookmarksCollection.deleteOne({ userEmail, promptId });
+      return res.send({ message: "bookmark removed", bookmarked: false });
+    }
+
+    const result = await bookmarksCollection.insertOne({
+      userEmail,
+      promptId,
+      createdAt: new Date(),
+    });
+    res.send({ message: "bookmark added", bookmarked: true, result });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to toggle bookmark" });
+  }
+});
+
+// GET /bookmarks/:email — get all bookmarks for a user
+app.get("/bookmarks/:email", async (req, res) => {
+  try {
+    const email = req.params.email;
+    const bookmarks = await bookmarksCollection
+      .find({ userEmail: email })
+      .sort({ createdAt: -1 })
+      .toArray();
+    res.send(bookmarks);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to fetch bookmarks" });
+  }
+});
+
+// GET /bookmarks/check/:email/:promptId — check if a prompt is bookmarked
+app.get("/bookmarks/check/:email/:promptId", async (req, res) => {
+  try {
+    const { email, promptId } = req.params;
+    const existing = await bookmarksCollection.findOne({
+      userEmail: email,
+      promptId,
+    });
+    res.send({ bookmarked: !!existing });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to check bookmark" });
   }
 });
 
