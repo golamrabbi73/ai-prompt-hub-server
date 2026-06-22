@@ -152,6 +152,41 @@ app.get("/prompts/:id", async (req, res) => {
   }
 });
 
+// PUT /prompts/:id — update a prompt
+app.put("/prompts/:id", async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const id = req.params.id;
+    const updatedData = req.body;
+    const query = { _id: new ObjectId(id) };
+    const updateDoc = {
+      $set: {
+        ...updatedData,
+        updatedAt: new Date(),
+      },
+    };
+    const result = await promptsCollection.updateOne(query, updateDoc);
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to update prompt" });
+  }
+});
+
+// DELETE /prompts/:id — delete a prompt
+app.delete("/prompts/:id", async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const id = req.params.id;
+    const query = { _id: new ObjectId(id) };
+    const result = await promptsCollection.deleteOne(query);
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to delete prompt" });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
