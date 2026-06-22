@@ -461,6 +461,33 @@ app.get("/reviews/latest", async (req, res) => {
   }
 });
 
+// GET /analytics/stats — platform-wide summary stats
+app.get("/analytics/stats", async (req, res) => {
+  try {
+    const [totalPrompts, totalUsers, totalReviews, copiesResult] =
+      await Promise.all([
+        promptsCollection.countDocuments({ status: "approved" }),
+        usersCollection.countDocuments(),
+        reviewsCollection.countDocuments(),
+        promptsCollection
+          .aggregate([
+            { $group: { _id: null, total: { $sum: "$copyCount" } } },
+          ])
+          .toArray(),
+      ]);
+
+    res.send({
+      totalPrompts,
+      totalUsers,
+      totalReviews,
+      totalCopies: copiesResult[0]?.total || 0,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to fetch stats" });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
