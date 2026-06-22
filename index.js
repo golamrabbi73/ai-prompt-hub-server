@@ -336,6 +336,40 @@ app.patch(
   }
 );
 
+// GET /prompts/:id/analytics — single prompt stats
+app.get("/prompts/:id/analytics", verifyToken, async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const prompt = await promptsCollection.findOne({
+      _id: new ObjectId(req.params.id),
+    });
+    if (!prompt) return res.status(404).send({ message: "prompt not found" });
+
+    const [bookmarkCount, reviewCount, reviews] = await Promise.all([
+      bookmarksCollection.countDocuments({ promptId: req.params.id }),
+      reviewsCollection.countDocuments({ promptId: req.params.id }),
+      reviewsCollection.find({ promptId: req.params.id }).toArray(),
+    ]);
+
+    const avgRating =
+      reviews.length > 0
+        ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+        : 0;
+
+    res.send({
+      title: prompt.title,
+      copyCount: prompt.copyCount || 0,
+      bookmarkCount,
+      reviewCount,
+      avgRating,
+      status: prompt.status,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to fetch prompt analytics" });
+  }
+});
+
 app.get("/prompts/:id", async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
@@ -708,6 +742,8 @@ app.get("/creator/stats/:email", verifyToken, async (req, res) => {
     res.status(500).send({ message: "Failed to fetch creator stats" });
   }
 });
+
+
 
 app.get("/analytics/admin", verifyToken, verifyAdmin, async (req, res) => {
   try {
