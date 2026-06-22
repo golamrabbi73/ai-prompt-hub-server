@@ -17,6 +17,7 @@ const usersCollection = client.db("promptariumDB").collection("users");
 const promptsCollection = client.db("promptariumDB").collection("prompts");
 const reviewsCollection = client.db("promptariumDB").collection("reviews");
 const bookmarksCollection = client.db("promptariumDB").collection("bookmarks");
+const reportsCollection = client.db("promptariumDB").collection("reports");
 
 // Health check
 app.get("/", (req, res) => {
@@ -304,6 +305,54 @@ app.get("/bookmarks/check/:email/:promptId", async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: "failed to check bookmark" });
+  }
+});
+
+// POST /reports — report a prompt
+app.post("/reports", async (req, res) => {
+  try {
+    const report = req.body;
+    const newReport = {
+      ...report,
+      status: "pending",
+      createdAt: new Date(),
+    };
+    const result = await reportsCollection.insertOne(newReport);
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to submit report" });
+  }
+});
+
+// GET /reports — get all reports (admin only, protected later)
+app.get("/reports", async (req, res) => {
+  try {
+    const reports = await reportsCollection
+      .find()
+      .sort({ createdAt: -1 })
+      .toArray();
+    res.send(reports);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to fetch reports" });
+  }
+});
+
+// PATCH /reports/:id — update report status (dismiss/warn)
+app.patch("/reports/:id", async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const id = req.params.id;
+    const { status } = req.body;
+    const result = await reportsCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { status, updatedAt: new Date() } }
+    );
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to update report" });
   }
 });
 
