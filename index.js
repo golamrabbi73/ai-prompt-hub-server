@@ -79,6 +79,43 @@ app.get("/users/:email", async (req, res) => {
   }
 });
 
+// PATCH /users/:email/role — change a user's role (Admin only, but no JWT guard yet per current setup)
+app.patch("/users/:email/role", async (req, res) => {
+  try {
+    const { role } = req.body; // "User" | "Creator" | "Admin"
+    const result = await usersCollection.updateOne(
+      { email: req.params.email },
+      { $set: { role, updatedAt: new Date() } }
+    );
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to update user role" });
+  }
+});
+
+// DELETE /users/:email
+app.delete("/users/:email", async (req, res) => {
+  try {
+    const result = await usersCollection.deleteOne({ email: req.params.email });
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to delete user" });
+  }
+});
+
+// GET /users — all users (for admin table)
+app.get("/users", async (req, res) => {
+  try {
+    const users = await usersCollection.find().sort({ createdAt: -1 }).toArray();
+    res.send(users);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to fetch users" });
+  }
+});
+
 // Prompts
 app.post("/prompts", async (req, res) => {
   try {
@@ -174,6 +211,22 @@ app.put("/prompts/:id", async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: "failed to update prompt" });
+  }
+});
+
+// PATCH /prompts/:id/status — approve or reject a prompt
+app.patch("/prompts/:id/status", async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const { status } = req.body; // "approved" | "rejected"
+    const result = await promptsCollection.updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { status, updatedAt: new Date() } }
+    );
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to update prompt status" });
   }
 });
 
@@ -476,6 +529,67 @@ app.get("/analytics/stats", async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: "failed to fetch stats" });
+  }
+});
+
+// GET /analytics/admin — full site analytics using aggregation
+app.get("/analytics/admin", async (req, res) => {
+  try {
+    const [
+      totalUsers,
+      totalPrompts,
+      pendingPrompts,
+      totalReports,
+      paymentsAgg,
+      promptsByCategory,
+      promptsByStatus,
+      topAiTools,
+    ] = await Promise.all([
+      usersCollection.countDocuments(),
+      promptsCollection.countDocuments(),
+      promptsCollection.countDocuments({ status: "pending" }),
+      reportsCollection.countDocuments({ status: "pending" }),
+      paymentsCollection
+        .aggregate([
+          { $group: { _id: null, totalRevenue: { $sum: "$amount" }, totalPayments: { $sum: 1 } } },
+        ])
+        .toArray(),
+      promptsCollection
+        .aggregate([
+          { $match: { status: "approved" } },
+          { $group: { _id: "$category", count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+        ])
+        .toArray(),
+      promptsCollection
+        .aggregate([
+          { $group: { _id: "$status", count: { $sum: 1 } } },
+        ])
+        .toArray(),
+      promptsCollection
+        .aggregate([
+          { $match: { status: "approved" } },
+          { $group: { _id: "$aiTool", count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+          { $limit: 5 },
+        ])
+        .toArray(),
+    ]);
+
+    res.send({
+      totalUsers,
+      totalPrompts,
+      pendingPrompts,
+      totalReports,
+      totalRevenue: paymentsAgg[0]?.totalRevenue || 0,
+      totalPayments: paymentsAgg[0]?.totalPayments || 0,
+      promptsByCategory,
+      promptsByStatus,
+      topAiTools,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to fetch admin analytics" });
   }
 });
 
