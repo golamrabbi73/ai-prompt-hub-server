@@ -446,6 +446,21 @@ app.get("/users/top-creators", async (req, res) => {
   }
 });
 
+// GET /reviews/latest — latest 6 reviews for home page
+app.get("/reviews/latest", async (req, res) => {
+  try {
+    const reviews = await reviewsCollection
+      .find()
+      .sort({ createdAt: -1 })
+      .limit(6)
+      .toArray();
+    res.send(reviews);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to fetch latest reviews" });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
