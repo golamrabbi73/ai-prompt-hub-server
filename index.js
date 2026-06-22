@@ -316,25 +316,26 @@ app.patch("/prompts/:id/copy", verifyToken, async (req, res) => {
   }
 });
 
-app.patch(
-  "/prompts/:id/status",
-  verifyToken,
-  verifyAdmin,
-  async (req, res) => {
-    try {
-      const { ObjectId } = require("mongodb");
-      const { status } = req.body;
-      const result = await promptsCollection.updateOne(
-        { _id: new ObjectId(req.params.id) },
-        { $set: { status, updatedAt: new Date() } }
-      );
-      res.send(result);
-    } catch (error) {
-      console.error(error);
-      res.status(500).send({ message: "failed to update prompt status" });
-    }
+app.patch("/prompts/:id/status", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const { status, feedback } = req.body;
+    const result = await promptsCollection.updateOne(
+      { _id: new ObjectId(req.params.id) },
+      {
+        $set: {
+          status,
+          ...(feedback && { rejectionFeedback: feedback }),
+          updatedAt: new Date(),
+        },
+      }
+    );
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to update prompt status" });
   }
-);
+});
 
 // GET /prompts/:id/analytics — single prompt stats
 app.get("/prompts/:id/analytics", verifyToken, async (req, res) => {
