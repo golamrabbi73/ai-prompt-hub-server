@@ -196,14 +196,33 @@ app.get("/reviews/latest", async (req, res) => {
   }
 });
 
-// /reviews/user/:email BEFORE /reviews/:promptId
+// prompt title in user review
 app.get("/reviews/user/:email", async (req, res) => {
   try {
+    const { ObjectId } = require("mongodb");
     const reviews = await reviewsCollection
       .find({ reviewerEmail: req.params.email })
       .sort({ createdAt: -1 })
       .toArray();
-    res.send(reviews);
+
+    if (reviews.length === 0) return res.send([]);
+
+    const promptIds = reviews
+      .filter((r) => ObjectId.isValid(r.promptId))
+      .map((r) => new ObjectId(r.promptId));
+
+    const prompts = await promptsCollection
+      .find({ _id: { $in: promptIds } })
+      .toArray();
+
+    const result = reviews.map((review) => {
+      const prompt = prompts.find(
+        (p) => p._id.toString() === review.promptId
+      );
+      return { ...review, promptTitle: prompt?.title || "Deleted Prompt" };
+    });
+
+    res.send(result);
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: "failed to fetch user reviews" });
