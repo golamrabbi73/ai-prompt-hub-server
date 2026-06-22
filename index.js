@@ -65,6 +65,18 @@ app.get("/users/top-creators", async (req, res) => {
   }
 });
 
+// GET /users/:email — single user info
+app.get("/users/:email", async (req, res) => {
+  try {
+    const user = await usersCollection.findOne({ email: req.params.email });
+    if (!user) return res.status(404).send({ message: "user not found" });
+    res.send(user);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to fetch user" });
+  }
+});
+
 // Prompts
 app.post("/prompts", async (req, res) => {
   try {
