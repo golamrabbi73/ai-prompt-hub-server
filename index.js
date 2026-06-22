@@ -18,6 +18,7 @@ const promptsCollection = client.db("promptariumDB").collection("prompts");
 const reviewsCollection = client.db("promptariumDB").collection("reviews");
 const bookmarksCollection = client.db("promptariumDB").collection("bookmarks");
 const reportsCollection = client.db("promptariumDB").collection("reports");
+const paymentsCollection = client.db("promptariumDB").collection("payments");
 
 // Health check
 app.get("/", (req, res) => {
@@ -353,6 +354,58 @@ app.patch("/reports/:id", async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: "failed to update report" });
+  }
+});
+
+// POST /payments — save payment record after successful Stripe payment
+app.post("/payments", async (req, res) => {
+  try {
+    const payment = req.body;
+    const newPayment = {
+      ...payment,
+      createdAt: new Date(),
+    };
+    const result = await paymentsCollection.insertOne(newPayment);
+
+    // Update user subscription to premium
+    await usersCollection.updateOne(
+      { email: payment.email },
+      { $set: { subscription: "premium" } }
+    );
+
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to save payment" });
+  }
+});
+
+// GET /payments — get all payments (admin only, protected later)
+app.get("/payments", async (req, res) => {
+  try {
+    const payments = await paymentsCollection
+      .find()
+      .sort({ createdAt: -1 })
+      .toArray();
+    res.send(payments);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to fetch payments" });
+  }
+});
+
+// GET /payments/:email — get payments by user email
+app.get("/payments/:email", async (req, res) => {
+  try {
+    const email = req.params.email;
+    const payments = await paymentsCollection
+      .find({ email })
+      .sort({ createdAt: -1 })
+      .toArray();
+    res.send(payments);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to fetch payments" });
   }
 });
 
