@@ -72,14 +72,63 @@ app.post("/prompts", async (req, res) => {
   }
 });
 
-// GET /prompts — fetch all approved public prompts (basic, no filter yet)
+// GET /prompts — search + filter + sort + pagination (server-side)
 app.get("/prompts", async (req, res) => {
   try {
+    const {
+      search = "",
+      category = "",
+      aiTool = "",
+      difficulty = "",
+      sort = "latest",
+      page = 1,
+      limit = 9,
+    } = req.query;
+
+    // Build filter query
+    const query = {
+      status: "approved",
+      visibility: "public",
+    };
+
+    // Search by title, tags, or aiTool
+    if (search) {
+      query.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { tags: { $regex: search, $options: "i" } },
+        { aiTool: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    if (category) query.category = category;
+    if (aiTool) query.aiTool = aiTool;
+    if (difficulty) query.difficulty = difficulty;
+
+    // Sort
+    let sortOption = {};
+    if (sort === "latest") sortOption = { createdAt: -1 };
+    if (sort === "mostCopied") sortOption = { copyCount: -1 };
+    if (sort === "mostPopular") sortOption = { averageRating: -1 };
+
+    // Pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    const total = await promptsCollection.countDocuments(query);
     const prompts = await promptsCollection
-      .find({ status: "approved", visibility: "public" })
-      .sort({ createdAt: -1 })
+      .find(query)
+      .sort(sortOption)
+      .skip(skip)
+      .limit(limitNum)
       .toArray();
-    res.send(prompts);
+
+    res.send({
+      prompts,
+      total,
+      page: pageNum,
+      totalPages: Math.ceil(total / limitNum),
+    });
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: "failed to fetch prompts" });
