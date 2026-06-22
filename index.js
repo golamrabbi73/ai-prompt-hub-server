@@ -409,6 +409,43 @@ app.get("/payments/:email", async (req, res) => {
   }
 });
 
+// GET /users/top-creators — top 6 creators by prompt count
+app.get("/users/top-creators", async (req, res) => {
+  try {
+    const creators = await promptsCollection
+      .aggregate([
+        { $match: { status: "approved" } },
+        { $group: { _id: "$creatorEmail", totalPrompts: { $sum: 1 }, totalCopies: { $sum: "$copyCount" } } },
+        { $sort: { totalPrompts: -1 } },
+        { $limit: 6 },
+        {
+          $lookup: {
+            from: "users",
+            localField: "_id",
+            foreignField: "email",
+            as: "userInfo",
+          },
+        },
+        { $unwind: "$userInfo" },
+        {
+          $project: {
+            email: "$_id",
+            totalPrompts: 1,
+            totalCopies: 1,
+            name: "$userInfo.name",
+            photoURL: "$userInfo.photoURL",
+            role: "$userInfo.role",
+          },
+        },
+      ])
+      .toArray();
+    res.send(creators);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to fetch top creators" });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
