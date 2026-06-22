@@ -72,6 +72,20 @@ app.post("/prompts", async (req, res) => {
   }
 });
 
+// GET /prompts — fetch all approved public prompts (basic, no filter yet)
+app.get("/prompts", async (req, res) => {
+  try {
+    const prompts = await promptsCollection
+      .find({ status: "approved", visibility: "public" })
+      .sort({ createdAt: -1 })
+      .toArray();
+    res.send(prompts);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to fetch prompts" });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
