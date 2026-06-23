@@ -716,38 +716,56 @@ app.get("/creator/stats/:email", verifyToken, async (req, res) => {
     const { email } = req.params;
     const prompts = await promptsCollection
       .find({ creatorEmail: email })
+      .sort({ createdAt: 1 })
       .toArray();
+
     const totalPrompts = prompts.length;
-    const approvedPrompts = prompts.filter(
-      (p) => p.status === "approved"
-    ).length;
-    const totalCopies = prompts.reduce(
-      (sum, p) => sum + (p.copyCount || 0),
-      0
-    );
+    const approvedPrompts = prompts.filter((p) => p.status === "approved").length;
+    const totalCopies = prompts.reduce((sum, p) => sum + (p.copyCount || 0), 0);
+
     const totalBookmarks = await bookmarksCollection.countDocuments({
       promptId: { $in: prompts.map((p) => p._id.toString()) },
     });
+
     const reviews = await reviewsCollection
-      .find({
-        promptId: { $in: prompts.map((p) => p._id.toString()) },
-      })
+      .find({ promptId: { $in: prompts.map((p) => p._id.toString()) } })
       .toArray();
+
     const avgRating =
       reviews.length > 0
         ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
         : 0;
+
+    // Prompt Growth — group by month
+    const promptGrowth = prompts.reduce((acc, p) => {
+      const month = new Date(p.createdAt).toLocaleString("default", {
+        month: "short",
+        year: "2-digit",
+      });
+      const existing = acc.find((a) => a.month === month);
+      if (existing) existing.count += 1;
+      else acc.push({ month, count: 1 });
+      return acc;
+    }, []);
+
+    // Copies per prompt chart data
+    const copiesData = prompts
+      .filter((p) => p.status === "approved")
+      .map((p) => ({
+        title: p.title.length > 20 ? p.title.slice(0, 20) + "…" : p.title,
+        copies: p.copyCount || 0,
+      }))
+      .sort((a, b) => b.copies - a.copies)
+      .slice(0, 6);
+
     res.send({
       totalPrompts,
       approvedPrompts,
       totalCopies,
       totalBookmarks,
       avgRating,
-      promptsData: prompts.map((p) => ({
-        title: p.title,
-        copyCount: p.copyCount || 0,
-        createdAt: p.createdAt,
-      })),
+      promptGrowth,
+      copiesData,
     });
   } catch (error) {
     console.error(error);
