@@ -208,6 +208,21 @@ app.post("/prompts", verifyToken, async (req, res) => {
   }
 });
 
+// public — featured prompts with MongoDB limit
+app.get("/prompts/featured", async (req, res) => {
+  try {
+    const prompts = await promptsCollection
+      .find({ status: "approved", visibility: "public" })
+      .sort({ copyCount: -1 })
+      .limit(6)
+      .toArray();
+    res.send(prompts);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to fetch featured prompts" });
+  }
+});
+
 app.get("/prompts", async (req, res) => {
   try {
     const {
