@@ -21,7 +21,7 @@ const bookmarksCollection = client.db("promptariumDB").collection("bookmarks");
 const reportsCollection = client.db("promptariumDB").collection("reports");
 const paymentsCollection = client.db("promptariumDB").collection("payments");
 
-// ── Middlewares ───────────────────────────────────────────────────────────────
+// Middlewares
 
 const verifyToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -49,12 +49,12 @@ const verifyAdmin = async (req, res, next) => {
   }
 };
 
-// ── Health check ──────────────────────────────────────────────────────────────
+// Health check
 app.get("/", (req, res) => {
-  res.send("Prompt marketplace server is running 🚀");
+  res.send("Prompt marketplace server is running");
 });
 
-// ── JWT ───────────────────────────────────────────────────────────────────────
+// JWT
 app.post("/jwt", (req, res) => {
   const userInfo = req.body;
   const token = jwt.sign(userInfo, process.env.JWT_SECRET, {
@@ -63,7 +63,7 @@ app.post("/jwt", (req, res) => {
   res.send({ token });
 });
 
-// ── Users ─────────────────────────────────────────────────────────────────────
+// Users
 
 app.post("/users", async (req, res) => {
   try {
@@ -177,7 +177,7 @@ app.delete("/users/:email", verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
-// ── Prompts ───────────────────────────────────────────────────────────────────
+// Prompts
 
 app.post("/prompts", verifyToken, async (req, res) => {
   try {
@@ -441,7 +441,7 @@ app.delete("/prompts/:id", verifyToken, async (req, res) => {
   }
 });
 
-// ── Reviews ───────────────────────────────────────────────────────────────────
+// Reviews
 
 app.post("/reviews", verifyToken, async (req, res) => {
   try {
@@ -523,7 +523,7 @@ app.delete("/reviews/:id", verifyToken, async (req, res) => {
   }
 });
 
-// ── Bookmarks ─────────────────────────────────────────────────────────────────
+// Bookmarks
 
 app.post("/bookmarks", verifyToken, async (req, res) => {
   try {
@@ -597,7 +597,7 @@ app.get("/bookmarks/:email", verifyToken, async (req, res) => {
   }
 });
 
-// ── Reports ───────────────────────────────────────────────────────────────────
+// Reports
 
 app.post("/reports", verifyToken, async (req, res) => {
   try {
@@ -671,7 +671,7 @@ app.post("/reports/:id/warn", verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
-// ── Payments ──────────────────────────────────────────────────────────────────
+// Payments
 
 app.post("/create-payment-intent", async (req, res) => {
   try {
@@ -732,7 +732,7 @@ app.get("/payments/:email", verifyToken, async (req, res) => {
   }
 });
 
-// ── Analytics ─────────────────────────────────────────────────────────────────
+// Analytics
 
 app.get("/analytics/stats", async (req, res) => {
   try {
