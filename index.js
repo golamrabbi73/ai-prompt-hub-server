@@ -221,7 +221,6 @@ app.get("/prompts/featured", async (req, res) => {
   }
 });
 
-// ✅ FIX 1: visibility filter সরানো হয়েছে — public + private দুটোই দেখাবে
 app.get("/prompts", async (req, res) => {
   try {
     const {
@@ -347,6 +346,24 @@ app.patch("/prompts/:id/status", verifyToken, verifyAdmin, async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: "failed to update prompt status" });
+  }
+});
+
+app.patch("/prompts/:id/feature", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const prompt = await promptsCollection.findOne({
+      _id: new ObjectId(req.params.id),
+    });
+    if (!prompt) return res.status(404).send({ message: "prompt not found" });
+    const result = await promptsCollection.updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { featured: !prompt?.featured, updatedAt: new Date() } }
+    );
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to toggle feature" });
   }
 });
 
@@ -623,6 +640,37 @@ app.patch("/reports/:id", verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
+app.post("/reports/:id/warn", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const report = await reportsCollection.findOne({
+      _id: new ObjectId(req.params.id),
+    });
+    if (!report) return res.status(404).send({ message: "report not found" });
+
+    await reportsCollection.updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { status: "warned", updatedAt: new Date() } }
+    );
+
+    const prompt = await promptsCollection.findOne({
+      _id: new ObjectId(report.promptId),
+    });
+
+    if (prompt?.creatorEmail) {
+      await usersCollection.updateOne(
+        { email: prompt.creatorEmail },
+        { $inc: { warningCount: 1 }, $set: { updatedAt: new Date() } }
+      );
+    }
+
+    res.send({ message: "creator warned" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to warn creator" });
+  }
+});
+
 // ── Payments ──────────────────────────────────────────────────────────────────
 
 app.post("/create-payment-intent", async (req, res) => {
@@ -736,7 +784,6 @@ app.get("/creator/stats/:email", verifyToken, async (req, res) => {
         ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
         : 0;
 
-    // Prompt Growth — group by month
     const promptGrowth = prompts.reduce((acc, p) => {
       const month = new Date(p.createdAt).toLocaleString("default", {
         month: "short",
@@ -748,7 +795,6 @@ app.get("/creator/stats/:email", verifyToken, async (req, res) => {
       return acc;
     }, []);
 
-    // Copies per prompt chart data
     const copiesData = prompts
       .filter((p) => p.status === "approved")
       .map((p) => ({
@@ -773,7 +819,6 @@ app.get("/creator/stats/:email", verifyToken, async (req, res) => {
   }
 });
 
-// ✅ FIX 2: totalReviews আর totalCopies যোগ হয়েছে
 app.get("/analytics/admin", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const [
