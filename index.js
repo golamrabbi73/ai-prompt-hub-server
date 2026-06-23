@@ -127,7 +127,6 @@ app.get("/users/top-creators", async (req, res) => {
   }
 });
 
-// ⚠️ specific /users routes BEFORE /users/:email
 app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const users = await usersCollection
@@ -208,7 +207,6 @@ app.post("/prompts", verifyToken, async (req, res) => {
   }
 });
 
-// public — featured prompts with MongoDB limit
 app.get("/prompts/featured", async (req, res) => {
   try {
     const prompts = await promptsCollection
@@ -223,6 +221,7 @@ app.get("/prompts/featured", async (req, res) => {
   }
 });
 
+// ✅ FIX 1: visibility filter সরানো হয়েছে — public + private দুটোই দেখাবে
 app.get("/prompts", async (req, res) => {
   try {
     const {
@@ -234,7 +233,9 @@ app.get("/prompts", async (req, res) => {
       page = 1,
       limit = 9,
     } = req.query;
-    const query = { status: "approved", visibility: "public" };
+
+    const query = { status: "approved" };
+
     if (search) {
       query.$or = [
         { title: { $regex: search, $options: "i" } },
@@ -245,13 +246,16 @@ app.get("/prompts", async (req, res) => {
     if (category) query.category = category;
     if (aiTool) query.aiTool = aiTool;
     if (difficulty) query.difficulty = difficulty;
+
     let sortOption = {};
     if (sort === "latest") sortOption = { createdAt: -1 };
     if (sort === "mostCopied") sortOption = { copyCount: -1 };
     if (sort === "mostPopular") sortOption = { averageRating: -1 };
+
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
+
     const total = await promptsCollection.countDocuments(query);
     const prompts = await promptsCollection
       .find(query)
@@ -259,6 +263,7 @@ app.get("/prompts", async (req, res) => {
       .skip(skip)
       .limit(limitNum)
       .toArray();
+
     res.send({
       prompts,
       total,
@@ -270,8 +275,6 @@ app.get("/prompts", async (req, res) => {
     res.status(500).send({ message: "failed to fetch prompts" });
   }
 });
-
-// ⚠️ ALL specific /prompts/* routes BEFORE /prompts/:id
 
 app.get("/prompts/admin/all", verifyToken, verifyAdmin, async (req, res) => {
   try {
@@ -286,23 +289,18 @@ app.get("/prompts/admin/all", verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
-app.delete(
-  "/prompts/admin/:id",
-  verifyToken,
-  verifyAdmin,
-  async (req, res) => {
-    try {
-      const { ObjectId } = require("mongodb");
-      const result = await promptsCollection.deleteOne({
-        _id: new ObjectId(req.params.id),
-      });
-      res.send(result);
-    } catch (error) {
-      console.error(error);
-      res.status(500).send({ message: "failed to delete prompt" });
-    }
+app.delete("/prompts/admin/:id", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const { ObjectId } = require("mongodb");
+    const result = await promptsCollection.deleteOne({
+      _id: new ObjectId(req.params.id),
+    });
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to delete prompt" });
   }
-);
+});
 
 app.get("/prompts/user/:email", verifyToken, async (req, res) => {
   try {
@@ -352,7 +350,6 @@ app.patch("/prompts/:id/status", verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
-// GET /prompts/:id/analytics — single prompt stats
 app.get("/prompts/:id/analytics", verifyToken, async (req, res) => {
   try {
     const { ObjectId } = require("mongodb");
@@ -442,7 +439,6 @@ app.post("/reviews", verifyToken, async (req, res) => {
   }
 });
 
-// ⚠️ specific /reviews/* routes BEFORE /reviews/:promptId
 app.get("/reviews/latest", async (req, res) => {
   try {
     const reviews = await reviewsCollection
@@ -532,24 +528,19 @@ app.post("/bookmarks", verifyToken, async (req, res) => {
   }
 });
 
-// ⚠️ specific /bookmarks/* routes BEFORE /bookmarks/:email
-app.get(
-  "/bookmarks/check/:email/:promptId",
-  verifyToken,
-  async (req, res) => {
-    try {
-      const { email, promptId } = req.params;
-      const existing = await bookmarksCollection.findOne({
-        userEmail: email,
-        promptId,
-      });
-      res.send({ bookmarked: !!existing });
-    } catch (error) {
-      console.error(error);
-      res.status(500).send({ message: "failed to check bookmark" });
-    }
+app.get("/bookmarks/check/:email/:promptId", verifyToken, async (req, res) => {
+  try {
+    const { email, promptId } = req.params;
+    const existing = await bookmarksCollection.findOne({
+      userEmail: email,
+      promptId,
+    });
+    res.send({ bookmarked: !!existing });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "failed to check bookmark" });
   }
-);
+});
 
 app.get("/bookmarks/full/:email", verifyToken, async (req, res) => {
   try {
@@ -752,6 +743,11 @@ app.get("/creator/stats/:email", verifyToken, async (req, res) => {
       totalCopies,
       totalBookmarks,
       avgRating,
+      promptsData: prompts.map((p) => ({
+        title: p.title,
+        copyCount: p.copyCount || 0,
+        createdAt: p.createdAt,
+      })),
     });
   } catch (error) {
     console.error(error);
@@ -759,8 +755,7 @@ app.get("/creator/stats/:email", verifyToken, async (req, res) => {
   }
 });
 
-
-
+// ✅ FIX 2: totalReviews আর totalCopies যোগ হয়েছে
 app.get("/analytics/admin", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const [
@@ -772,6 +767,8 @@ app.get("/analytics/admin", verifyToken, verifyAdmin, async (req, res) => {
       promptsByCategory,
       promptsByStatus,
       topAiTools,
+      totalReviews,
+      copiesAgg,
     ] = await Promise.all([
       usersCollection.countDocuments(),
       promptsCollection.countDocuments(),
@@ -808,7 +805,14 @@ app.get("/analytics/admin", verifyToken, verifyAdmin, async (req, res) => {
           { $limit: 5 },
         ])
         .toArray(),
+      reviewsCollection.countDocuments(),
+      promptsCollection
+        .aggregate([
+          { $group: { _id: null, total: { $sum: "$copyCount" } } },
+        ])
+        .toArray(),
     ]);
+
     res.send({
       totalUsers,
       totalPrompts,
@@ -819,6 +823,8 @@ app.get("/analytics/admin", verifyToken, verifyAdmin, async (req, res) => {
       promptsByCategory,
       promptsByStatus,
       topAiTools,
+      totalReviews,
+      totalCopies: copiesAgg[0]?.total || 0,
     });
   } catch (error) {
     console.error(error);
